@@ -1,13 +1,14 @@
+use dep::std;
 use dep::std::println;
 
 mod utils;
 
 // Top-level constants related to the size of BigUint56 limbs and bytes.
-global BITS_PER_LIMB: Field = 56; /// Number of bits per limb.
+global BITS_PER_LIMB: Field = 32; /// Number of bits per limb.
 global NUM_LIMBS: Field = 5;      /// Number of limbs.
 
 global BYTES_PER_LIMB: Field = 7; /// Number of bytes per limb (BITS_PER_LIMB / 8).
-global MAX_BITS: Field = 280;     /// Maximum number of bits (BITS_PER_LIMB * NUM_LIMBS).
+global MAX_BITS: Field = 224;     /// Maximum number of bits (BITS_PER_LIMB * NUM_LIMBS).
 global MAX_BYTES: Field = 35;     /// Maximum number of bytes (NUM_LIMBS * BYTES_PER_LIMB).
 
 // TODO/NOTES:
@@ -25,13 +26,13 @@ global MAX_BYTES: Field = 35;     /// Maximum number of bytes (NUM_LIMBS * BYTES
 /// 1. 56 is divisible by 8, making byte conversion easier.
 /// 2. Multiplication requires a double width value, and u112 is the maximum representable in Noir.
 struct BigUint56 {
-    limbs: [u56; NUM_LIMBS],
+    limbs: [u32; NUM_LIMBS],
 }
 
 impl BigUint56 {
     /// Creates a new BigUint56 initialized to zero.
     pub fn zero() -> Self {
-        Self { limbs: [0 as u56; NUM_LIMBS] }
+        Self { limbs: [0 as u32; NUM_LIMBS] }
     }
 
     /// Creates a new BigUint56 initialized to one.
@@ -41,8 +42,8 @@ impl BigUint56 {
         one
     }
 
-    /// Constructs a BigUint56 from a single `u56` value.
-    pub fn from_u56(val: u56) -> Self {
+    /// Constructs a BigUint56 from a single `u32` value.
+    pub fn from_u32(val: u32) -> Self {
         let mut buint = BigUint56::zero();
         buint.limbs[0] = val;
         buint
@@ -51,14 +52,14 @@ impl BigUint56 {
     /// Constructs a BigUint56 from a byte array in little-endian format.
     pub fn from_bytes(bytes: [u8]) -> Self {
         // TODO: Do I need this check?
-        assert(bytes.len() as u56 <= MAX_BYTES as u56);
+        assert(bytes.len() as u32 <= MAX_BYTES as u32);
 
         let mut res = BigUint56::zero();
         for i in 0..bytes.len() {
-            let limb_index = (i as u56) / (BYTES_PER_LIMB as u56);
-            let byte_index = (i as u56) % (BYTES_PER_LIMB as u56);
+            let limb_index = (i as u32) / (BYTES_PER_LIMB as u32);
+            let byte_index = (i as u32) % (BYTES_PER_LIMB as u32);
 
-            res.limbs[limb_index as Field] |= (bytes[i] as u56) << (byte_index * 8);
+            res.limbs[limb_index as Field] |= (bytes[i] as u32) << (byte_index * 8);
         }
 
         res
@@ -96,9 +97,9 @@ impl BigUint56 {
 
     /// Adds two BigUint56 numbers with carry.
     /// Returns a tuple containing the result and the carry.
-    fn adc(self: Self, other: Self) -> (Self, u56) {
+    fn adc(self: Self, other: Self) -> (Self, u32) {
         let mut res = BigUint56::zero();
-        let mut carry = 0 as u56;
+        let mut carry = 0 as u32;
 
         for i in 0..NUM_LIMBS {
             let (sum, new_carry) = utils::adc(self.limbs[i], other.limbs[i], carry);
@@ -118,9 +119,9 @@ impl BigUint56 {
 
     /// Subtracts two BigUint56 numbers with borrow.
     /// Returns a tuple containing the result and the borrow.
-    fn sbb(self: Self, other: Self) -> (Self, u56) {
+    fn sbb(self: Self, other: Self) -> (Self, u32) {
         let mut res = BigUint56::zero();
-        let mut borrow = 0 as u56;
+        let mut borrow = 0 as u32;
 
         for i in 0..NUM_LIMBS {
             let (diff, new_borrow) = utils::sbb(self.limbs[i], other.limbs[i], borrow);
@@ -145,12 +146,12 @@ impl BigUint56 {
         let mut hi = BigUint56::zero();
 
         for i in 0..NUM_LIMBS {
-            let mut carry = 0 as u56;
+            let mut carry = 0 as u32;
 
             for j in 0..NUM_LIMBS {
                 let k = i + j;
 
-                if k as u56 >= NUM_LIMBS as u56 {
+                if k as u32 >= NUM_LIMBS as u32 {
                     let (n, c) = utils::mac(hi.limbs[k - NUM_LIMBS], self.limbs[i], other.limbs[j], carry);
                     hi.limbs[k - NUM_LIMBS] = n;
                     carry = c;
@@ -170,12 +171,12 @@ impl BigUint56 {
     /// Shifts the BigUint56 instance to the left by a specified number of bits `n`.
     /// where `0 <= n < Limb::BITS`,
     /// Returns the shifted result and the carry.
-    fn shl_limb(self: Self, n: u56) -> (Self, u56) {
-        assert(n < BITS_PER_LIMB as u56);
+    fn shl_limb(self: Self, n: u32) -> (Self, u32) {
+        assert(n < BITS_PER_LIMB as u32);
 
         let mut res = self;
 
-        let rshift = BITS_PER_LIMB as u56 - n;
+        let rshift = BITS_PER_LIMB as u32 - n;
         let carry = if (n == 0) { 0 } else { self.limbs[NUM_LIMBS - 1] >> rshift };
 
         if (n > 0) {
@@ -196,19 +197,19 @@ impl BigUint56 {
 
     /// Shifts the BigUint56 instance to the left by a specified number of bits `n`.
     // TODO: Should I return early if n == 0?
-    fn shl(self: Self, n: u56) -> Self {
+    fn shl(self: Self, n: u32) -> Self {
         let mut res = BigUint56::zero();
 
-        if n < MAX_BITS as u56 {
-            let shift_num = n / (BITS_PER_LIMB as u56);
-            let rem = n % (BITS_PER_LIMB as u56);
+        if n < MAX_BITS as u32 {
+            let shift_num = n / (BITS_PER_LIMB as u32);
+            let rem = n % (BITS_PER_LIMB as u32);
 
             // for i in shift_num..NUM_LIMBS {
             for i in 0..NUM_LIMBS {
-                if i as u56 >= shift_num {
+                if i as u32 >= shift_num {
                     // BUG: This line panics with Expected array index to fit in u64
                     // res.limbs[i] = self.limbs[i - shift_num as Field];
-                    res.limbs[i as u56] = self.limbs[i as u56 - shift_num];
+                    res.limbs[i as u32] = self.limbs[i as u32 - shift_num];
                 }
             }
 
@@ -222,13 +223,13 @@ impl BigUint56 {
     /// Shifts the BigUint56 instance to the right by a specified number of bits `n`.
     /// where `0 <= n < Limb::BITS`,
     // TODO: Should I return early if n == 0?
-    fn shr_limb(self: Self, n: u56) -> Self {
-        assert(n < BITS_PER_LIMB as u56);
+    fn shr_limb(self: Self, n: u32) -> Self {
+        assert(n < BITS_PER_LIMB as u32);
 
         let mut res = self;
 
         if (n > 0) {
-            let lshift = BITS_PER_LIMB as u56 - n;
+            let lshift = BITS_PER_LIMB as u32 - n;
 
             for i in 0..NUM_LIMBS-1 {
                 res.limbs[i] = (self.limbs[i] >> n) | (self.limbs[i + 1] << lshift);
@@ -247,16 +248,16 @@ impl BigUint56 {
 
     /// Shifts the BigUint56 instance to the right by a specified number of bits.
     // TODO: Should I return early if n == 0?
-    fn shr(self: Self, n: u56) -> Self {
+    fn shr(self: Self, n: u32) -> Self {
         let mut res = BigUint56::zero();
 
-        if n < MAX_BITS as u56 {
-            let shift_num = n / (BITS_PER_LIMB as u56);
-            let rem = n % (BITS_PER_LIMB as u56);
+        if n < MAX_BITS as u32 {
+            let shift_num = n / (BITS_PER_LIMB as u32);
+            let rem = n % (BITS_PER_LIMB as u32);
 
             // for i in 0..shift_num {
             for i in 0..NUM_LIMBS {
-                if i as u56 + shift_num < NUM_LIMBS as u56 {
+                if i as u32 + shift_num < NUM_LIMBS as u32 {
                     res.limbs[i] = self.limbs[i + shift_num as Field];
                 }
             }
@@ -268,14 +269,14 @@ impl BigUint56 {
     }
 
     /// Returns the number of bits needed to represent the BigUint56 instance.
-    fn nbits(self: Self) -> u56 {
+    fn nbits(self: Self) -> u32 {
         let bits = BigUint56::to_bits(self);
         let mut res = 0;
         let mut done = false;
         for i in 0..MAX_BITS {
             if !done {
                 if bits[MAX_BITS - i - 1] != 0 {
-                    res = (MAX_BITS - i - 1) as u56 + 1;
+                    res = (MAX_BITS - i - 1) as u32 + 1;
                     done = true;
                 }
             }
@@ -301,7 +302,7 @@ impl BigUint56 {
             let mut c = other.shl(bit_diff);
 
             for i in 0..MAX_BITS+1 {
-                if i as u56 <= bit_diff {
+                if i as u32 <= bit_diff {
                     if rem.gte(c) {
                         rem = rem.sub(c);
                         quo = quo.shl1().add(BigUint56::one());
@@ -359,7 +360,7 @@ impl BigUint56 {
 
         // Attempt to subtract the modulus, to ensure the result is in the field.
         let (sum2, borrow1) = sum1.sbb(modulus);
-        let (_diff, borrow2) = utils::sbb(carry, 0 as u56, borrow1);
+        let (_diff, borrow2) = utils::sbb(carry, 0 as u32, borrow1);
 
         if borrow2 == 0 {
             sum2
@@ -390,14 +391,14 @@ fn test_from_bytes1() {
 fn test_from_bytes2() {
     let bytes = [255 as u8; 7];
     let a = BigUint56::from_bytes(bytes);
-    assert(a.eq(BigUint56{ limbs: [0-1 as u56, 0, 0, 0, 0] }));
+    assert(a.eq(BigUint56{ limbs: [0-1 as u32, 0, 0, 0, 0] }));
 }
 
 #[test]
 fn test_from_bytes3() {
     let bytes = [255 as u8; 8];
     let a = BigUint56::from_bytes(bytes);
-    assert(a.eq(BigUint56{ limbs: [0-1 as u56, 255, 0, 0, 0] }));
+    assert(a.eq(BigUint56{ limbs: [0-1 as u32, 255, 0, 0, 0] }));
 }
 
 #[test]
@@ -415,6 +416,7 @@ fn test_to_bits1() {
     let b = BigUint56::one();
 
     let c = a.sub(b);
+
     assert(c.to_bits() == [1 as u1; MAX_BITS]);
 }
 
@@ -429,7 +431,7 @@ fn test_add1() {
 
 #[test]
 fn test_add2() {
-    let a = BigUint56{ limbs: [0-1 as u56, 0-1 as u56, 0-1 as u56, 0-1 as u56, 0] };
+    let a = BigUint56{ limbs: [0-1 as u32, 0-1 as u32, 0-1 as u32, 0-1 as u32, 0] };
     let b = BigUint56{ limbs: [1, 0, 0, 0, 0] };
     let sum = a.add(b);
 
@@ -438,7 +440,7 @@ fn test_add2() {
 
 #[test]
 fn test_adc1() {
-    let a = BigUint56{ limbs: [0-1 as u56; NUM_LIMBS] };
+    let a = BigUint56{ limbs: [0-1 as u32; NUM_LIMBS] };
     let b = BigUint56::one();
     let (sum, carry) = a.adc(b);
 
@@ -461,7 +463,7 @@ fn test_sub2() {
     let b = BigUint56{ limbs: [2, 0, 0, 0, 0] };
     let diff = a.sub(b);
 
-    assert(diff.eq(BigUint56{ limbs: [0-1 as u56, 1, 0, 0, 0] }));
+    assert(diff.eq(BigUint56{ limbs: [0-1 as u32, 1, 0, 0, 0] }));
 }
 
 #[test]
@@ -470,8 +472,8 @@ fn test_sbb1() {
     let b = BigUint56{ limbs: [2, 0, 0, 0, 0] };
     let (diff, borrow) = a.sbb(b);
 
-    assert(diff.eq(BigUint56{ limbs: [0-1 as u56; 5] }));
-    assert(borrow >> (BITS_PER_LIMB as u56 - 1) == 1);
+    assert(diff.eq(BigUint56{ limbs: [0-1 as u32; 5] }));
+    assert(borrow >> (BITS_PER_LIMB as u32 - 1) == 1);
 }
 
 #[test]
@@ -486,12 +488,12 @@ fn test_mul1() {
 
 #[test]
 fn test_mul2() {
-    let a = BigUint56{ limbs: [0-1 as u56; 5] };
-    let b = BigUint56{ limbs: [0-1 as u56; 5] };
+    let a = BigUint56{ limbs: [0-1 as u32; 5] };
+    let b = BigUint56{ limbs: [0-1 as u32; 5] };
     let (lo, hi) = a.mul(b);
 
     assert(lo.eq(BigUint56::one()));
-    assert(hi.eq(BigUint56{ limbs: [0-2 as u56, 0-1 as u56, 0-1 as u56, 0-1 as u56, 0-1 as u56] }));
+    assert(hi.eq(BigUint56{ limbs: [0-2 as u32, 0-1 as u32, 0-1 as u32, 0-1 as u32, 0-1 as u32] }));
 }
 
 #[test]
@@ -533,7 +535,7 @@ fn test_shl1() {
 #[test]
 fn test_shl2() {
     let a = BigUint56::from_bytes([1, 2]);
-    let b = a.shl(MAX_BITS as u56);
+    let b = a.shl(MAX_BITS as u32);
 
     assert(b.is_zero());
 }
@@ -570,7 +572,7 @@ fn test_shl5() {
 
 #[test]
 fn test_shl6() {
-    let a = BigUint56::from_u56(0x80000000000000);
+    let a = BigUint56::from_u32(0x80000000000000);
     let b = a.shl1();
 
     assert(b.eq(BigUint56 {
@@ -589,7 +591,7 @@ fn test_shr1() {
 #[test]
 fn test_shr2() {
     let a = BigUint56::from_bytes([1, 2]);
-    let b = a.shr(MAX_BITS as u56);
+    let b = a.shr(MAX_BITS as u32);
 
     assert(b.is_zero());
 }
